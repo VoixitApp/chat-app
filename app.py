@@ -1,3 +1,5 @@
+import sqlite3
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask import Flask, request, jsonify, render_template_string
 from openai import OpenAI
 import os
@@ -5,6 +7,11 @@ import json
 
 
 app = Flask(__name__)
+app.secret_key = "supersecretkey"
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -195,38 +202,140 @@ function speak(text) {
 def home():
     return render_template_string(HTML)
 
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        try:
+            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+            conn.commit()
+        except:
+            return "User already exists"
+
+        conn.close()
+        return "Registered! Go to /login"
+
+    return """
+    <form method="post">
+        <input name="username" placeholder="Username"/>
+        <input name="password" type="password" placeholder="Password"/>
+        <button>Register</button>
+    </form>
+    """
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        c.execute("SELECT id FROM users WHERE username=? AND password=?", (username, password))
+        user = c.fetchone()
+        conn.close()
+
+        if user:
+            login_user(User(user[0]))
+            return "Logged in! Go to /"
+        else:
+            return "Invalid login"
+
+    return """
+    <form method="post">
+        <input name="username"/>
+        <input name="password" type="password"/>
+        <button>Login</button>
+    </form>
+    """
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return "Logged out"
+
+def init_db():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE,
+        password TEXT
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        role TEXT,
+        content TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+class User(UserMixin):
+    def __init__(self, id):
+        self.id = id
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User(user_id)        
+
 def is_important(message):
     keywords = ["name", "remember", "my", "i am", "i'm", "important"]
     return any(word in message.lower() for word in keywords)
 
 @app.route("/chat", methods=["POST"])
+@login_required
 def chat():
     user_message = request.json["message"]
 
-    conversation_history.append({"role": "user", "content": user_message})
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+
+    # save user message
+    c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+              (current_user.id, "user", user_message))
+
+    # get last 10 messages
+    c.execute("SELECT role, content FROM messages WHERE user_id=? ORDER BY id DESC LIMIT 10",
+              (current_user.id,))
+    rows = c.fetchall()
+    conn.close()
+
+    messages = [{"role": role, "content": content} for role, content in reversed(rows)]
 
     try:
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "You are a wise, intelligent and calm assistant. You give clear, helpful and natural responses."}
-            ] + conversation_history[-10:]
+            messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages
         )
 
         reply = response.choices[0].message.content
 
-        conversation_history.append({"role": "assistant", "content": reply})
-
-        # limit memory
-        conversation_history[:] = conversation_history[-50:]
-
-        # save memory
-        with open("memory.json", "w") as f:
-            json.dump(conversation_history, f)
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+        c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+                  (current_user.id, "assistant", reply))
+        conn.commit()
+        conn.close()
 
     except Exception as e:
-        print("ERROR:", e)   # 👈 ADD THIS
-        reply = str(e)
+        reply = "Error: " + str(e)
 
     return jsonify({"reply": reply})
 
