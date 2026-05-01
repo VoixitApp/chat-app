@@ -111,6 +111,12 @@ HTML = """
 
 <body>
 
+<div>
+    <a href="/login">Login</a> |
+    <a href="/register">Register</a> |
+    <a href="/logout">Logout</a>
+</div>
+
 <div id="container">
     <div id="header">🤖 OracleDrop</div>
     <div id="chat"></div>
