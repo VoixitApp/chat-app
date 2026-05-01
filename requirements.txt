@@ -1,12 +1,5 @@
-<<<<<<< HEAD
 flask
 requests
 openai
 gunicorn
-=======
-flask
-requests
-openai
-gunicorn
->>>>>>> fd2d3a0bb4e42af07c1855988fe1f8d952b5337c
 flask-login
