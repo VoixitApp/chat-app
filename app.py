@@ -1,4 +1,5 @@
 import sqlite3
+from flask import redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from flask import Flask, request, jsonify, render_template_string
 from openai import OpenAI
@@ -205,6 +206,7 @@ function speak(text) {
 """
 
 @app.route("/")
+@login_required
 def home():
     return render_template_string(HTML)
 
@@ -224,7 +226,7 @@ def register():
             return "User already exists"
 
         conn.close()
-        return "Registered! Go to /login"
+        return redirect(url_for("login"))
 
     return """
     <form method="post">
@@ -249,7 +251,7 @@ def login():
 
         if user:
             login_user(User(user[0]))
-            return "Logged in! Go to /"
+            return redirect(url_for("home"))
         else:
             return "Invalid login"
 
@@ -265,7 +267,7 @@ def login():
 @login_required
 def logout():
     logout_user()
-    return "Logged out"
+    return redirect(url_for("login"))
 
 def init_db():
     conn = sqlite3.connect("users.db")
