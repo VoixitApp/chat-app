@@ -23,44 +23,69 @@ try:
 except:
     conversation_history = []
 
+
 HTML = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>OracleDrop</title>
+    <title>My AI Chat</title>
 
     <style>
         body {
             margin: 0;
-            font-family: Arial;
+            font-family: Arial, sans-serif;
             background: #0f172a;
             color: white;
+        }
+
+        #topbar {
+            padding: 10px;
+            text-align: center;
+            background: #020617;
+            border-bottom: 1px solid #1e293b;
+        }
+
+        #topbar a {
+            color: #38bdf8;
+            margin: 0 10px;
+            text-decoration: none;
+        }
+
+        #container {
+            width: 100%;
+            max-width: 700px;
+            margin: auto;
+            height: calc(100vh - 50px);
+            display: flex;
+            flex-direction: column;
         }
 
         #header {
             padding: 15px;
             text-align: center;
+            font-size: 18px;
             border-bottom: 1px solid #1e293b;
         }
 
         #chat {
-            height: 75vh;
+            flex: 1;
             overflow-y: auto;
             padding: 20px;
         }
 
         .message {
             margin-bottom: 15px;
+            display: flex;
         }
 
-        .user { text-align: right; }
-        .bot { text-align: left; }
+        .user { justify-content: flex-end; }
+        .bot { justify-content: flex-start; }
 
         .bubble {
-            display: inline-block;
-            padding: 10px;
-            border-radius: 10px;
+            padding: 12px 15px;
+            border-radius: 12px;
             max-width: 70%;
+            line-height: 1.4;
         }
 
         .user .bubble { background: #2563eb; }
@@ -74,39 +99,58 @@ HTML = """
 
         input {
             flex: 1;
-            padding: 10px;
+            padding: 12px;
+            border-radius: 8px;
             border: none;
-            border-radius: 5px;
+            outline: none;
+            background: #1e293b;
+            color: white;
         }
 
         button {
             margin-left: 10px;
-            padding: 10px;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
             cursor: pointer;
         }
 
-        a {
-            color: red;
-            margin-left: 10px;
+        button:hover {
+            background: #1d4ed8;
         }
     </style>
 </head>
 
 <body>
 
-<div id="header">
-    🤖 OracleDrop | User: {{username}}
+<!-- ✅ CLEAN TOP BAR (NO OVERLAY ISSUE) -->
+<div id="topbar">
+    <a href="/login">Login</a>
+    <a href="/register">Register</a>
     <a href="/logout">Logout</a>
 </div>
 
-<div id="chat"></div>
+<div id="container">
 
-<div id="input-area">
-    <input id="message" placeholder="Type message..." />
-    <button onclick="sendMessage()">Send</button>
+    <div id="header">
+        🤖 OracleDrop | User: {{username}}
+        <a href="/logout" style="color: red; margin-left: 10px;">Logout</a>
+    </div>
+
+    <div id="chat"></div>
+
+    <div id="input-area">
+        <input id="message" placeholder="Type or speak..." />
+        <button onclick="sendMessage()">Send</button>
+        <button onclick="startVoice()">🎤</button>
+    </div>
+
 </div>
 
 <script>
+
 async function sendMessage() {
     let msg = document.getElementById("message").value;
     if (!msg) return;
@@ -121,6 +165,16 @@ async function sendMessage() {
 
     document.getElementById("message").value = "";
 
+    let typingId = "typing-" + Date.now();
+
+    chat.innerHTML += `
+        <div class="message bot" id="${typingId}">
+            <div class="bubble">Typing...</div>
+        </div>
+    `;
+
+    chat.scrollTop = chat.scrollHeight;
+
     let res = await fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -129,14 +183,44 @@ async function sendMessage() {
 
     let data = await res.json();
 
-    chat.innerHTML += `
-        <div class="message bot">
-            <div class="bubble">${data.reply}</div>
-        </div>
-    `;
+    let element = document.getElementById(typingId);
+    element.innerHTML = `<div class="bubble"></div>`;
 
-    chat.scrollTop = chat.scrollHeight;
+    let bubble = element.querySelector(".bubble");
+
+    let text = data.reply;
+    let i = 0;
+
+    function typeEffect() {
+        if (i < text.length) {
+            bubble.innerHTML += text.charAt(i);
+            i++;
+            setTimeout(typeEffect, 10);
+        } else {
+            speak(text);
+        }
+    }
+
+    typeEffect();
 }
+
+function startVoice() {
+    let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.lang = "en-US";
+    recognition.start();
+
+    recognition.onresult = function(event) {
+        let transcript = event.results[0][0].transcript;
+        document.getElementById("message").value = transcript;
+        sendMessage();
+    };
+}
+
+function speak(text) {
+    let speech = new SpeechSynthesisUtterance(text);
+    window.speechSynthesis.speak(speech);
+}
+
 </script>
 
 </body>
