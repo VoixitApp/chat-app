@@ -348,15 +348,32 @@ def logout():
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
+    user_message = request.json["message"]
+
     def generate():
-        for word in ["Hello ", "this ", "is ", "streaming ", "working!"]:
-            time.sleep(0.5)
-            yield word
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant."},
+                    {"role": "user", "content": user_message}
+                ],
+                stream=True
+            )
+
+            for chunk in response:
+                if chunk.choices and chunk.choices[0].delta:
+                    text = chunk.choices[0].delta.get("content", "")
+                    if text:
+                        yield text
+
+        except Exception as e:
+            yield f"\nError: {str(e)}"
 
     return Response(generate(), content_type="text/plain", headers={
-    "Cache-Control": "no-cache",
-    "X-Accel-Buffering": "no"
-})
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no"
+    })
 
 # ======================
 # RUN
