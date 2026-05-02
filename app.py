@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, render_template_string, redirect, url
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from openai import OpenAI
+client = OpenAI()
 
 # ======================
 # APP SETUP
@@ -354,14 +355,12 @@ def chat():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
-    # save user message
     c.execute(
         "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
         (current_user.id, "user", user_message)
     )
     conn.commit()
 
-    # get last messages
     c.execute(
         "SELECT role, content FROM messages WHERE user_id=? ORDER BY id DESC LIMIT 10",
         (current_user.id,)
@@ -371,36 +370,28 @@ def chat():
 
     messages = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
 
-    def generate():
-        full_reply = ""
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages
+        )
 
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages,
-                stream=True   # ✅ THIS IS THE KEY
-            )
+        reply = response.choices[0].message.content
 
-            for chunk in response:
-                if chunk.choices[0].delta.get("content"):
-                    text = chunk.choices[0].delta["content"]
-                    full_reply += text
-                    yield text
-
-        except Exception as e:
-            yield f"\nError: {str(e)}"
-
-        # save full reply after streaming
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
         c.execute(
             "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-            (current_user.id, "assistant", full_reply)
+            (current_user.id, "assistant", reply)
         )
         conn.commit()
         conn.close()
 
-    return Response(generate(), content_type="text/plain")
+    except Exception as e:
+        reply = "ERROR: " + str(e)
+        print(reply)  # 👈 IMPORTANT (shows in Render logs)
+
+    return jsonify({"reply": reply})
 
 
 # ======================
