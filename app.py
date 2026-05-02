@@ -362,10 +362,14 @@ def chat():
             )
 
             for chunk in response:
-                if chunk.choices and chunk.choices[0].delta:
-                    text = chunk.choices[0].delta.get("content", "")
-                    if text:
-                        yield text
+                try:
+                    delta = chunk.choices[0].delta
+
+                    if delta and delta.content:
+                        yield delta.content
+
+                except Exception as e:
+                    print("Chunk error:", e)
 
         except Exception as e:
             yield f"\nError: {str(e)}"
