@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import time
 from flask import Response
 from flask import Flask, request, jsonify, render_template_string, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -356,60 +357,12 @@ def logout():
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
-    user_message = request.json["message"]
-
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-
-    c.execute(
-        "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-        (current_user.id, "user", user_message)
-    )
-    conn.commit()
-
-    c.execute(
-        "SELECT role, content FROM messages WHERE user_id=? ORDER BY id DESC LIMIT 10",
-        (current_user.id,)
-    )
-    rows = c.fetchall()
-    conn.close()
-
-    messages = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
-
     def generate():
-        full_reply = ""
-
-        try:
-            stream = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages,
-                stream=True
-            )
-
-            for chunk in stream:
-                try:
-                    text = chunk.choices[0].delta.content or ""
-                    if text:
-                        full_reply += text
-                        yield text
-                except:
-                    pass
-
-        except Exception as e:
-            yield f"\nERROR: {str(e)}"
-            print("STREAM ERROR:", e)
-
-        conn = sqlite3.connect("users.db")
-        c = conn.cursor()
-        c.execute(
-            "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-            (current_user.id, "assistant", full_reply)
-        )
-        conn.commit()
-        conn.close()
+        for word in ["Hello ", "this ", "is ", "streaming ", "working!"]:
+            time.sleep(0.5)
+            yield word
 
     return Response(generate(), content_type="text/plain")
-
 
 # ======================
 # RUN
