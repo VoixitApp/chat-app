@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from flask import Response
 from flask import Flask, request, jsonify, render_template_string, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -370,28 +371,39 @@ def chat():
 
     messages = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages
-        )
+    def generate():
+        full_reply = ""
 
-        reply = response.choices[0].message.content
+        try:
+            stream = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages,
+                stream=True
+            )
+
+            for chunk in stream:
+                try:
+                    text = chunk.choices[0].delta.content or ""
+                    if text:
+                        full_reply += text
+                        yield text
+                except:
+                    pass
+
+        except Exception as e:
+            yield f"\nERROR: {str(e)}"
+            print("STREAM ERROR:", e)
 
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
         c.execute(
             "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-            (current_user.id, "assistant", reply)
+            (current_user.id, "assistant", full_reply)
         )
         conn.commit()
         conn.close()
 
-    except Exception as e:
-        reply = "ERROR: " + str(e)
-        print(reply)  # 👈 IMPORTANT (shows in Render logs)
-
-    return jsonify({"reply": reply})
+    return Response(generate(), content_type="text/plain")
 
 
 # ======================
