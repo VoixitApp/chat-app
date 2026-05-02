@@ -192,7 +192,6 @@ async function sendMessage() {
 
     let chat = document.getElementById("chat");
 
-    // show user message
     chat.innerHTML += `
         <div class="message user">
             <div class="bubble">${msg}</div>
@@ -201,7 +200,6 @@ async function sendMessage() {
 
     document.getElementById("message").value = "";
 
-    // create empty bot bubble (IMPORTANT)
     let botId = "bot-" + Date.now();
 
     chat.innerHTML += `
@@ -210,34 +208,27 @@ async function sendMessage() {
         </div>
     `;
 
-    chat.scrollTop = chat.scrollHeight;
-
-    // call backend
     let response = await fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({message: msg})
     });
 
-    // STREAM READER
-    let reader = response.body.getReader();
-    let decoder = new TextDecoder("utf-8");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
 
     let fullText = "";
 
     while (true) {
-        let { value, done } = await reader.read();
+        const { done, value } = await reader.read();
         if (done) break;
 
-        let chunk = decoder.decode(value);
+        const chunk = decoder.decode(value);
         fullText += chunk;
 
-        // 🔥 LIVE UPDATE
         document.getElementById(botId).innerText = fullText;
-        chat.scrollTop = chat.scrollHeight;
     }
 
-    // 🔊 speak after complete
     speak(fullText);
 }
 
@@ -362,7 +353,10 @@ def chat():
             time.sleep(0.5)
             yield word
 
-    return Response(generate(), content_type="text/plain")
+    return Response(generate(), content_type="text/plain", headers={
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no"
+})
 
 # ======================
 # RUN
