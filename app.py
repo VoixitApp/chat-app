@@ -191,6 +191,7 @@ async function sendMessage() {
 
     let chat = document.getElementById("chat");
 
+    // show user message
     chat.innerHTML += `
         <div class="message user">
             <div class="bubble">${msg}</div>
@@ -199,6 +200,7 @@ async function sendMessage() {
 
     document.getElementById("message").value = "";
 
+    // create empty bot bubble (IMPORTANT)
     let botId = "bot-" + Date.now();
 
     chat.innerHTML += `
@@ -209,30 +211,33 @@ async function sendMessage() {
 
     chat.scrollTop = chat.scrollHeight;
 
+    // call backend
     let response = await fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({message: msg})
     });
 
+    // STREAM READER
     let reader = response.body.getReader();
     let decoder = new TextDecoder("utf-8");
 
-    let done = false;
     let fullText = "";
 
-    while (!done) {
-        let {value, done: doneReading} = await reader.read();
-        done = doneReading;
+    while (true) {
+        let { value, done } = await reader.read();
+        if (done) break;
 
-        let chunk = decoder.decode(value || new Uint8Array());
+        let chunk = decoder.decode(value);
         fullText += chunk;
 
+        // 🔥 LIVE UPDATE
         document.getElementById(botId).innerText = fullText;
         chat.scrollTop = chat.scrollHeight;
     }
 
-    speak(fullText); // 🔊 keep your voice feature
+    // 🔊 speak after complete
+    speak(fullText);
 }
 
 
