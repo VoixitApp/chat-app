@@ -186,7 +186,7 @@ button {
 
 <script>
 
-async function sendMessage() {
+function sendMessage() {
     let msg = document.getElementById("message").value;
     if (!msg) return;
 
@@ -208,28 +208,23 @@ async function sendMessage() {
         </div>
     `;
 
-    let response = await fetch("/chat", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message: msg})
-    });
+    chat.scrollTop = chat.scrollHeight;
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
+    const evtSource = new EventSource("/chat?message=" + encodeURIComponent(msg));
 
     let fullText = "";
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        fullText += chunk;
+    evtSource.onmessage = function(event) {
+        fullText += event.data;
 
         document.getElementById(botId).innerText = fullText;
-    }
+        chat.scrollTop = chat.scrollHeight;
+    };
 
-    speak(fullText);
+    evtSource.onerror = function() {
+        evtSource.close();
+        speak(fullText);
+    };
 }
 
 
@@ -345,10 +340,12 @@ def logout():
 
 
 
+from flask import Response
+
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
-    user_message = request.json["message"]
+    user_message = request.args.get("message")
 
     def generate():
         try:
@@ -362,21 +359,17 @@ def chat():
             )
 
             for chunk in response:
-                try:
-                    delta = chunk.choices[0].delta
+                delta = chunk.choices[0].delta
 
-                    if delta and delta.content:
-                        yield delta.content
-
-                except Exception as e:
-                    print("Chunk error:", e)
+                if delta and delta.content:
+                    yield f"data: {delta.content}\n\n"   # 🔥 SSE format
 
         except Exception as e:
-            yield f"\nError: {str(e)}"
+            yield f"data: Error: {str(e)}\n\n"
 
-    return Response(generate(), content_type="text/plain", headers={
+    return Response(generate(), content_type="text/event-stream", headers={
         "Cache-Control": "no-cache",
-        "X-Accel-Buffering": "no"
+        "Connection": "keep-alive"
     })
 
 # ======================
