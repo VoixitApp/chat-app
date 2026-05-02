@@ -189,39 +189,50 @@ async function sendMessage() {
 
     let chat = document.getElementById("chat");
 
-    chat.innerHTML += `<div class="message user"><div class="bubble">${msg}</div></div>`;
+    chat.innerHTML += `
+        <div class="message user">
+            <div class="bubble">${msg}</div>
+        </div>
+    `;
+
     document.getElementById("message").value = "";
 
-    let typingId = "typing-" + Date.now();
-    chat.innerHTML += `<div class="message bot" id="${typingId}"><div class="bubble">Typing...</div></div>`;
+    let botId = "bot-" + Date.now();
+
+    chat.innerHTML += `
+        <div class="message bot">
+            <div class="bubble" id="${botId}"></div>
+        </div>
+    `;
+
     chat.scrollTop = chat.scrollHeight;
 
-    let res = await fetch("/chat", {
+    let response = await fetch("/chat", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({message: msg})
     });
 
-    let data = await res.json();
-    let element = document.getElementById(typingId);
-    element.innerHTML = `<div class="bubble"></div>`;
+    let reader = response.body.getReader();
+    let decoder = new TextDecoder("utf-8");
 
-    let bubble = element.querySelector(".bubble");
-    let text = data.reply;
-    let i = 0;
+    let done = false;
+    let fullText = "";
 
-    function typeEffect() {
-        if (i < text.length) {
-            bubble.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(typeEffect, 10);
-        } else {
-            speak(text);
-        }
+    while (!done) {
+        let {value, done: doneReading} = await reader.read();
+        done = doneReading;
+
+        let chunk = decoder.decode(value || new Uint8Array());
+        fullText += chunk;
+
+        document.getElementById(botId).innerText = fullText;
+        chat.scrollTop = chat.scrollHeight;
     }
 
-    typeEffect();
+    speak(fullText); // 🔊 keep your voice feature
 }
+
 
 function startVoice() {
     let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
@@ -334,6 +345,7 @@ def logout():
     return redirect(url_for("login"))
 
 
+
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
@@ -342,35 +354,52 @@ def chat():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
-    c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-              (current_user.id, "user", user_message))
+    # save user message
+    c.execute(
+        "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+        (current_user.id, "user", user_message)
+    )
+    conn.commit()
 
-    c.execute("SELECT role, content FROM messages WHERE user_id=? ORDER BY id DESC LIMIT 10",
-              (current_user.id,))
+    # get last messages
+    c.execute(
+        "SELECT role, content FROM messages WHERE user_id=? ORDER BY id DESC LIMIT 10",
+        (current_user.id,)
+    )
     rows = c.fetchall()
     conn.close()
 
     messages = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages
-        )
+    def generate():
+        full_reply = ""
 
-        reply = response.choices[0].message.content
+        try:
+            with client.responses.stream(
+                model="gpt-4.1-mini",
+                input=[{"role": "system", "content": "You are a helpful assistant."}] + messages
+            ) as stream:
 
+                for event in stream:
+                    if event.type == "response.output_text.delta":
+                        text = event.delta
+                        full_reply += text
+                        yield text
+
+        except Exception as e:
+            yield f"\nError: {str(e)}"
+
+        # save full reply after streaming ends
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
-        c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-                  (current_user.id, "assistant", reply))
+        c.execute(
+            "INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+            (current_user.id, "assistant", full_reply)
+        )
         conn.commit()
         conn.close()
 
-    except Exception as e:
-        reply = "Error: " + str(e)
-
-    return jsonify({"reply": reply})
+    return Response(generate(), content_type="text/plain")
 
 
 # ======================
