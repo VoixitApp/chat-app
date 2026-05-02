@@ -1,14 +1,15 @@
 import sqlite3
-from flask import redirect, url_for
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask import Flask, request, jsonify, render_template_string
-from openai import OpenAI
 import os
-import json
+from flask import Flask, request, jsonify, render_template_string, redirect, url_for
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from openai import OpenAI
 
-
+# ======================
+# APP SETUP
+# ======================
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.getenv("SECRET_KEY", "fallback-secret")
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -16,281 +17,9 @@ login_manager.login_view = "login"
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# 🔥 LOAD MEMORY
-try:
-    with open("memory.json", "r") as f:
-        conversation_history = json.load(f)
-except:
-    conversation_history = []
-
-
-HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>My AI Chat</title>
-
-    <style>
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: #0f172a;
-            color: white;
-        }
-
-        #topbar {
-            padding: 10px;
-            text-align: center;
-            background: #020617;
-            border-bottom: 1px solid #1e293b;
-        }
-
-        #topbar a {
-            color: #38bdf8;
-            margin: 0 10px;
-            text-decoration: none;
-        }
-
-        #container {
-            width: 100%;
-            max-width: 700px;
-            margin: auto;
-            height: calc(100vh - 50px);
-            display: flex;
-            flex-direction: column;
-        }
-
-        #header {
-            padding: 15px;
-            text-align: center;
-            font-size: 18px;
-            border-bottom: 1px solid #1e293b;
-        }
-
-        #chat {
-            flex: 1;
-            overflow-y: auto;
-            padding: 20px;
-        }
-
-        .message {
-            margin-bottom: 15px;
-            display: flex;
-        }
-
-        .user { justify-content: flex-end; }
-        .bot { justify-content: flex-start; }
-
-        .bubble {
-            padding: 12px 15px;
-            border-radius: 12px;
-            max-width: 70%;
-            line-height: 1.4;
-        }
-
-        .user .bubble { background: #2563eb; }
-        .bot .bubble { background: #1e293b; }
-
-        #input-area {
-            display: flex;
-            padding: 10px;
-            border-top: 1px solid #1e293b;
-        }
-
-        input {
-            flex: 1;
-            padding: 12px;
-            border-radius: 8px;
-            border: none;
-            outline: none;
-            background: #1e293b;
-            color: white;
-        }
-
-        button {
-            margin-left: 10px;
-            padding: 12px;
-            border: none;
-            border-radius: 8px;
-            background: #2563eb;
-            color: white;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background: #1d4ed8;
-        }
-    </style>
-</head>
-
-<body>
-
-<!-- ✅ CLEAN TOP BAR (NO OVERLAY ISSUE) -->
-<div id="topbar">
-    <a href="/login">Login</a>
-    <a href="/register">Register</a>
-    <a href="/logout">Logout</a>
-</div>
-
-<div id="container">
-
-    <div id="header">
-        🤖 OracleDrop | User: {{username}}
-        <a href="/logout" style="color: red; margin-left: 10px;">Logout</a>
-    </div>
-
-    <div id="chat"></div>
-
-    <div id="input-area">
-        <input id="message" placeholder="Type or speak..." />
-        <button onclick="sendMessage()">Send</button>
-        <button onclick="startVoice()">🎤</button>
-    </div>
-
-</div>
-
-<script>
-
-async function sendMessage() {
-    let msg = document.getElementById("message").value;
-    if (!msg) return;
-
-    let chat = document.getElementById("chat");
-
-    chat.innerHTML += `
-        <div class="message user">
-            <div class="bubble">${msg}</div>
-        </div>
-    `;
-
-    document.getElementById("message").value = "";
-
-    let typingId = "typing-" + Date.now();
-
-    chat.innerHTML += `
-        <div class="message bot" id="${typingId}">
-            <div class="bubble">Typing...</div>
-        </div>
-    `;
-
-    chat.scrollTop = chat.scrollHeight;
-
-    let res = await fetch("/chat", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({message: msg})
-    });
-
-    let data = await res.json();
-
-    let element = document.getElementById(typingId);
-    element.innerHTML = `<div class="bubble"></div>`;
-
-    let bubble = element.querySelector(".bubble");
-
-    let text = data.reply;
-    let i = 0;
-
-    function typeEffect() {
-        if (i < text.length) {
-            bubble.innerHTML += text.charAt(i);
-            i++;
-            setTimeout(typeEffect, 10);
-        } else {
-            speak(text);
-        }
-    }
-
-    typeEffect();
-}
-
-function startVoice() {
-    let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.lang = "en-US";
-    recognition.start();
-
-    recognition.onresult = function(event) {
-        let transcript = event.results[0][0].transcript;
-        document.getElementById("message").value = transcript;
-        sendMessage();
-    };
-}
-
-function speak(text) {
-    let speech = new SpeechSynthesisUtterance(text);
-    window.speechSynthesis.speak(speech);
-}
-
-</script>
-
-</body>
-</html>
-"""
-
-@app.route("/")
-@login_required
-def home():
-    return render_template_string(HTML, username=current_user.id)
-
-@app.route("/register", methods=["GET", "POST"])
-def register():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-
-        conn = sqlite3.connect("users.db")
-        c = conn.cursor()
-
-        try:
-            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
-            conn.commit()
-        except:
-            return "User already exists"
-
-        conn.close()
-        return redirect(url_for("login"))
-
-    return """
-    <form method="post">
-        <input name="username" placeholder="Username"/>
-        <input name="password" type="password" placeholder="Password"/>
-        <button>Register</button>
-    </form>
-    """
-
-@app.route("/login", methods=["GET", "POST"])
-def login():
-    if request.method == "POST":
-        username = request.form["username"]
-        password = request.form["password"]
-
-        conn = sqlite3.connect("users.db")
-        c = conn.cursor()
-
-        c.execute("SELECT id FROM users WHERE username=? AND password=?", (username, password))
-        user = c.fetchone()
-        conn.close()
-
-        if user:
-            login_user(User(user[0]))
-            return redirect(url_for("home"))
-        else:
-            return "Invalid login"
-
-    return """
-    <form method="post">
-        <input name="username"/>
-        <input name="password" type="password"/>
-        <button>Login</button>
-    </form>
-    """
-
-@app.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for("login"))
-
+# ======================
+# DATABASE INIT
+# ======================
 def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
@@ -317,17 +46,293 @@ def init_db():
 
 init_db()
 
+# ======================
+# USER CLASS
+# ======================
 class User(UserMixin):
     def __init__(self, id):
         self.id = id
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User(user_id)        
+    return User(user_id)
 
-def is_important(message):
-    keywords = ["name", "remember", "my", "i am", "i'm", "important"]
-    return any(word in message.lower() for word in keywords)
+# ======================
+# HTML UI
+# ======================
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<title>OracleDrop AI</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial;
+    background: #0f172a;
+    color: white;
+}
+
+#topbar {
+    padding: 10px;
+    text-align: center;
+    background: #020617;
+    border-bottom: 1px solid #1e293b;
+}
+
+#topbar a {
+    color: #38bdf8;
+    margin: 0 10px;
+    text-decoration: none;
+}
+
+#container {
+    max-width: 700px;
+    margin: auto;
+    height: calc(100vh - 50px);
+    display: flex;
+    flex-direction: column;
+}
+
+#header {
+    padding: 15px;
+    text-align: center;
+    border-bottom: 1px solid #1e293b;
+}
+
+#chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.message {
+    display: flex;
+    margin-bottom: 15px;
+}
+
+.user { justify-content: flex-end; }
+.bot { justify-content: flex-start; }
+
+.bubble {
+    padding: 12px;
+    border-radius: 12px;
+    max-width: 70%;
+}
+
+.user .bubble { background: #2563eb; }
+.bot .bubble { background: #1e293b; }
+
+#input-area {
+    display: flex;
+    padding: 10px;
+    border-top: 1px solid #1e293b;
+}
+
+input {
+    flex: 1;
+    padding: 12px;
+    border-radius: 8px;
+    border: none;
+    background: #1e293b;
+    color: white;
+}
+
+button {
+    margin-left: 10px;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+}
+</style>
+</head>
+
+<body>
+
+<div id="topbar">
+    <a href="/login">Login</a>
+    <a href="/register">Register</a>
+</div>
+
+<div id="container">
+
+<div id="header">
+🤖 OracleDrop | {{username}}
+<a href="/logout" style="color:red;">Logout</a>
+</div>
+
+<div id="chat">
+{% for msg in messages %}
+<div class="message {% if msg.role == 'user' %}user{% else %}bot{% endif %}">
+<div class="bubble">{{msg.content}}</div>
+</div>
+{% endfor %}
+</div>
+
+<div id="input-area">
+<input id="message" placeholder="Type or speak..." />
+<button onclick="sendMessage()">Send</button>
+<button onclick="startVoice()">🎤</button>
+</div>
+
+</div>
+
+<script>
+
+async function sendMessage() {
+    let msg = document.getElementById("message").value;
+    if (!msg) return;
+
+    let chat = document.getElementById("chat");
+
+    chat.innerHTML += `<div class="message user"><div class="bubble">${msg}</div></div>`;
+    document.getElementById("message").value = "";
+
+    let typingId = "typing-" + Date.now();
+    chat.innerHTML += `<div class="message bot" id="${typingId}"><div class="bubble">Typing...</div></div>`;
+    chat.scrollTop = chat.scrollHeight;
+
+    let res = await fetch("/chat", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message: msg})
+    });
+
+    let data = await res.json();
+    let element = document.getElementById(typingId);
+    element.innerHTML = `<div class="bubble"></div>`;
+
+    let bubble = element.querySelector(".bubble");
+    let text = data.reply;
+    let i = 0;
+
+    function typeEffect() {
+        if (i < text.length) {
+            bubble.innerHTML += text.charAt(i);
+            i++;
+            setTimeout(typeEffect, 10);
+        } else {
+            speak(text);
+        }
+    }
+
+    typeEffect();
+}
+
+function startVoice() {
+    let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+    recognition.start();
+
+    recognition.onresult = function(e) {
+        document.getElementById("message").value = e.results[0][0].transcript;
+        sendMessage();
+    };
+}
+
+function speak(text) {
+    let speech = new SpeechSynthesisUtterance(text);
+    speechSynthesis.speak(speech);
+}
+
+window.onload = () => {
+    let chat = document.getElementById("chat");
+    chat.scrollTop = chat.scrollHeight;
+};
+</script>
+
+</body>
+</html>
+"""
+
+# ======================
+# ROUTES
+# ======================
+
+@app.route("/")
+@login_required
+def home():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+
+    c.execute("SELECT username FROM users WHERE id=?", (current_user.id,))
+    result = c.fetchone()
+    username = result[0] if result else "Unknown"
+
+    c.execute("SELECT role, content FROM messages WHERE user_id=? ORDER BY id ASC LIMIT 20",
+              (current_user.id,))
+    rows = c.fetchall()
+    conn.close()
+
+    messages = [{"role": r[0], "content": r[1]} for r in rows]
+
+    return render_template_string(HTML, messages=messages, username=username)
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = generate_password_hash(request.form["password"])
+
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        try:
+            c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+            conn.commit()
+        except:
+            return "User already exists"
+
+        conn.close()
+        return redirect(url_for("login"))
+
+    return '''
+    <form method="post">
+        <input name="username" placeholder="Username"/>
+        <input name="password" type="password"/>
+        <button>Register</button>
+    </form>
+    '''
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        conn = sqlite3.connect("users.db")
+        c = conn.cursor()
+
+        c.execute("SELECT id, password FROM users WHERE username=?", (username,))
+        user = c.fetchone()
+        conn.close()
+
+        if user and check_password_hash(user[1], password):
+            login_user(User(user[0]))
+            return redirect(url_for("home"))
+        else:
+            return "Invalid login"
+
+    return '''
+    <form method="post">
+        <input name="username"/>
+        <input name="password" type="password"/>
+        <button>Login</button>
+    </form>
+    '''
+
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
+
 
 @app.route("/chat", methods=["POST"])
 @login_required
@@ -337,17 +342,15 @@ def chat():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
-    # save user message
     c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
               (current_user.id, "user", user_message))
 
-    # get last 10 messages
     c.execute("SELECT role, content FROM messages WHERE user_id=? ORDER BY id DESC LIMIT 10",
               (current_user.id,))
     rows = c.fetchall()
     conn.close()
 
-    messages = [{"role": role, "content": content} for role, content in reversed(rows)]
+    messages = [{"role": r[0], "content": r[1]} for r in reversed(rows)]
 
     try:
         response = client.chat.completions.create(
@@ -369,5 +372,9 @@ def chat():
 
     return jsonify({"reply": reply})
 
+
+# ======================
+# RUN
+# ======================
 if __name__ == "__main__":
     app.run(debug=True)
