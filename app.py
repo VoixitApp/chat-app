@@ -375,21 +375,22 @@ def chat():
         full_reply = ""
 
         try:
-            with client.responses.stream(
+            response = client.chat.completions.create(
                 model="gpt-4.1-mini",
-                input=[{"role": "system", "content": "You are a helpful assistant."}] + messages
-            ) as stream:
+                messages=[{"role": "system", "content": "You are a helpful assistant."}] + messages,
+                stream=True   # ✅ THIS IS THE KEY
+            )
 
-                for event in stream:
-                    if event.type == "response.output_text.delta":
-                        text = event.delta
-                        full_reply += text
-                        yield text
+            for chunk in response:
+                if chunk.choices[0].delta.get("content"):
+                    text = chunk.choices[0].delta["content"]
+                    full_reply += text
+                    yield text
 
         except Exception as e:
             yield f"\nError: {str(e)}"
 
-        # save full reply after streaming ends
+        # save full reply after streaming
         conn = sqlite3.connect("users.db")
         c = conn.cursor()
         c.execute(
