@@ -204,12 +204,13 @@ function sendMessage() {
 
     chat.innerHTML += `
         <div class="message bot">
-            <div class="bubble" id="${botId}"></div>
+            <div class="bubble" id="${botId}">Typing...</div>
         </div>
     `;
 
     chat.scrollTop = chat.scrollHeight;
 
+    // ✅ STREAMING (GET)
     const evtSource = new EventSource("/chat?message=" + encodeURIComponent(msg));
 
     let fullText = "";
@@ -340,12 +341,14 @@ def logout():
 
 
 
-@app.route("/chat", methods=["POST"])
+@app.route("/chat")
 @login_required
 def chat():
     user_message = request.args.get("message")
 
     def generate():
+        full_reply = ""
+
         try:
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
@@ -359,17 +362,29 @@ def chat():
             for chunk in response:
                 delta = chunk.choices[0].delta
 
-                if delta and delta.content:
-                    yield f"data: {delta.content}\n\n"   # 🔥 SSE format
+                # ✅ FIXED (NO MORE .get ERROR)
+                if hasattr(delta, "content") and delta.content:
+                    text = delta.content
+                    full_reply += text
+                    yield f"data: {text}\n\n"
+
+            # ✅ SAVE FULL RESPONSE AFTER STREAM
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+
+            c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+                      (current_user.id, "user", user_message))
+
+            c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+                      (current_user.id, "assistant", full_reply))
+
+            conn.commit()
+            conn.close()
 
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"
 
-    return Response(generate(), content_type="text/event-stream", headers={
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive"
-    })
-
+    return Response(generate(), mimetype="text/event-stream")
 # ======================
 # RUN
 # ======================
