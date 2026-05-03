@@ -342,6 +342,10 @@ window.onload = () => {
 @app.route("/")
 @login_required
 def home():
+
+    if not current_user.is_authenticated:
+        return redirect(url_for("login"))
+
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
@@ -404,6 +408,10 @@ def register():
         try:
             c.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
             conn.commit()
+
+            user_id = c.lastrowid  # 🔥 get new user id
+            login_user(User(user_id))  # 🔥 auto login
+
         except:
             return "User already exists"
 
@@ -411,11 +419,14 @@ def register():
         return redirect(url_for("login"))
 
     return '''
+    <h2>Register</h2>
     <form method="post">
         <input name="username" placeholder="Username"/>
         <input name="password" type="password"/>
         <button>Register</button>
     </form>
+
+    <p>Already have account? <a href="/login">Login</a></p>
     '''
 
 
@@ -439,11 +450,14 @@ def login():
             return "Invalid login"
 
     return '''
+    <h2>Login</h2>
     <form method="post">
-        <input name="username"/>
+        <input name="username" placeholder="Username"/>
         <input name="password" type="password"/>
         <button>Login</button>
     </form>
+
+    <p>No account? <a href="/register">Register here</a></p>
     '''
 
 
