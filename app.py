@@ -9,6 +9,7 @@ from openai import OpenAI
 client = OpenAI()
 active_streams = {}
 
+
 # ======================
 # APP SETUP
 # ======================
@@ -264,7 +265,8 @@ function sendMessage() {
 
     chat.scrollTop = chat.scrollHeight;
 
-    const evtSource = new EventSource(
+    // ✅ FIX: assign to currentStream
+    currentStream = new EventSource(
         "/chat?message=" + encodeURIComponent(msg) + "&chat_id={{current_chat}}"
     );
 
@@ -312,6 +314,8 @@ function speak(text) {
     speechSynthesis.speak(speech);
 }
 
+init_db()
+
 window.onload = () => {
     let chat = document.getElementById("chat");
     chat.scrollTop = chat.scrollHeight;
@@ -332,29 +336,34 @@ def home():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
-    # USERNAME
     c.execute("SELECT username FROM users WHERE id=?", (current_user.id,))
     username = c.fetchone()[0]
 
-    # ALL CHATS
+    # GET CHATS
     c.execute("SELECT id, title FROM chats WHERE user_id=?", (current_user.id,))
     chats = c.fetchall()
 
-    # CURRENT CHAT
+    # 🔥 AUTO CREATE CHAT IF NONE
+    if not chats:
+        c.execute("INSERT INTO chats (user_id, title) VALUES (?, ?)",
+                  (current_user.id, "First Chat"))
+        conn.commit()
+
+        c.execute("SELECT id, title FROM chats WHERE user_id=?", (current_user.id,))
+        chats = c.fetchall()
+
     chat_id = request.args.get("chat_id")
 
-    if not chat_id and chats:
+    if not chat_id:
         chat_id = chats[0][0]
 
-    # MESSAGES
-    messages = []
-    if chat_id:
-        c.execute("""
-            SELECT role, content FROM messages
-            WHERE chat_id=?
-            ORDER BY id ASC
-        """, (chat_id,))
-        messages = [{"role": r[0], "content": r[1]} for r in c.fetchall()]
+    # GET MESSAGES
+    c.execute("""
+        SELECT role, content FROM messages
+        WHERE chat_id=?
+        ORDER BY id ASC
+    """, (chat_id,))
+    messages = [{"role": r[0], "content": r[1]} for r in c.fetchall()]
 
     conn.close()
 
@@ -436,13 +445,23 @@ def chat():
     user_message = request.args.get("message")
     user_id = current_user.id
 
-    # mark stream active
+    if not chat_id:
+        return "No chat selected"
+
     active_streams[user_id] = True
 
     def generate():
         full_reply = ""
 
         try:
+            # 🔥 SAVE USER MESSAGE FIRST
+            conn = sqlite3.connect("users.db")
+            c = conn.cursor()
+            c.execute("INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+                      (chat_id, "user", user_message))
+            conn.commit()
+            conn.close()
+
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=[
@@ -453,7 +472,6 @@ def chat():
             )
 
             for chunk in response:
-                # 🔴 STOP BUTTON CHECK
                 if not active_streams.get(user_id):
                     break
 
@@ -464,16 +482,11 @@ def chat():
                     full_reply += text
                     yield f"data: {text}\n\n"
 
-            # save messages
+            # 🔥 SAVE AI RESPONSE
             conn = sqlite3.connect("users.db")
             c = conn.cursor()
-
-            c.execute("INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
-                      (chat_id, "user", user_message))
-            
             c.execute("INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
                       (chat_id, "assistant", full_reply))
-
             conn.commit()
             conn.close()
 
