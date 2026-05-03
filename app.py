@@ -28,6 +28,7 @@ def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
+    # USERS
     c.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,10 +37,20 @@ def init_db():
     )
     """)
 
+    # CHATS (NEW)
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS chats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        title TEXT
+    )
+    """)
+
+    # MESSAGES (UPDATED)
     c.execute("""
     CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
+        chat_id INTEGER,
         role TEXT,
         content TEXT
     )
@@ -47,9 +58,6 @@ def init_db():
 
     conn.commit()
     conn.close()
-
-init_db()
-
 # ======================
 # USER CLASS
 # ======================
@@ -190,6 +198,17 @@ button:hover {
     <a href="/login">Login</a>
     <a href="/register">Register</a>
     <a href="/logout" style="color:red;">Logout</a>
+
+    <h3>Your Chats</h3>
+
+<a href="/new_chat">➕ New Chat</a>
+
+{% for chat in chats %}
+    <a href="/?chat_id={{chat[0]}}">
+        💬 {{chat[1]}}
+    </a>
+{% endfor %}
+
 </div>
 
 <!-- MAIN -->
@@ -245,7 +264,9 @@ function sendMessage() {
 
     chat.scrollTop = chat.scrollHeight;
 
-    currentStream = new EventSource("/chat?message=" + encodeURIComponent(msg));
+    const evtSource = new EventSource(
+        "/chat?message=" + encodeURIComponent(msg) + "&chat_id={{current_chat}}"
+    );
 
     let fullText = "";
 
@@ -311,19 +332,39 @@ def home():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
+    # USERNAME
     c.execute("SELECT username FROM users WHERE id=?", (current_user.id,))
-    result = c.fetchone()
-    username = result[0] if result else "Unknown"
+    username = c.fetchone()[0]
 
-    c.execute("SELECT role, content FROM messages WHERE user_id=? ORDER BY id ASC LIMIT 20",
-              (current_user.id,))
-    rows = c.fetchall()
+    # ALL CHATS
+    c.execute("SELECT id, title FROM chats WHERE user_id=?", (current_user.id,))
+    chats = c.fetchall()
+
+    # CURRENT CHAT
+    chat_id = request.args.get("chat_id")
+
+    if not chat_id and chats:
+        chat_id = chats[0][0]
+
+    # MESSAGES
+    messages = []
+    if chat_id:
+        c.execute("""
+            SELECT role, content FROM messages
+            WHERE chat_id=?
+            ORDER BY id ASC
+        """, (chat_id,))
+        messages = [{"role": r[0], "content": r[1]} for r in c.fetchall()]
+
     conn.close()
 
-    messages = [{"role": r[0], "content": r[1]} for r in rows]
-
-    return render_template_string(HTML, messages=messages, username=username)
-
+    return render_template_string(
+        HTML,
+        username=username,
+        messages=messages,
+        chats=chats,
+        current_chat=chat_id
+    )
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -391,6 +432,7 @@ def logout():
 @app.route("/chat")
 @login_required
 def chat():
+    chat_id = request.args.get("chat_id")
     user_message = request.args.get("message")
     user_id = current_user.id
 
@@ -426,10 +468,11 @@ def chat():
             conn = sqlite3.connect("users.db")
             c = conn.cursor()
 
-            c.execute("INSERT INTO messages VALUES (NULL, ?, ?, ?)",
-                      (user_id, "user", user_message))
-            c.execute("INSERT INTO messages VALUES (NULL, ?, ?, ?)",
-                      (user_id, "assistant", full_reply))
+            c.execute("INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+                      (chat_id, "user", user_message))
+            
+            c.execute("INSERT INTO messages (chat_id, role, content) VALUES (?, ?, ?)",
+                      (chat_id, "assistant", full_reply))
 
             conn.commit()
             conn.close()
@@ -441,6 +484,24 @@ def chat():
             active_streams[user_id] = False
 
     return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/new_chat")
+@login_required
+def new_chat():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+
+    c.execute("INSERT INTO chats (user_id, title) VALUES (?, ?)",
+              (current_user.id, "New Chat"))
+
+    chat_id = c.lastrowid
+
+    conn.commit()
+    conn.close()
+
+    return redirect(url_for("home", chat_id=chat_id))
+
 
 @app.route("/stop")
 @login_required
