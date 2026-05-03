@@ -340,8 +340,6 @@ def logout():
 
 
 
-from flask import Response
-
 @app.route("/chat", methods=["POST"])
 @login_required
 def chat():
