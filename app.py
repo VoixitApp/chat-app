@@ -7,6 +7,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from openai import OpenAI
 client = OpenAI()
+active_streams = {}
 
 # ======================
 # APP SETUP
@@ -208,14 +209,17 @@ button:hover {
 </div>
 
 <div id="input-area">
-    <input id="message" placeholder="Type a message..." />
+    <input id="message" placeholder="Type a message..." onkeydown="handleKey(event)" />
     <button onclick="sendMessage()">Send</button>
+    <button onclick="stopResponse()">⛔ Stop</button>
     <button onclick="startVoice()">🎤</button>
 </div>
 
 </div>
 
 <script>
+
+let currentStream = null;
 
 function sendMessage() {
     let msg = document.getElementById("message").value;
@@ -241,20 +245,35 @@ function sendMessage() {
 
     chat.scrollTop = chat.scrollHeight;
 
-    const evtSource = new EventSource("/chat?message=" + encodeURIComponent(msg));
+    currentStream = new EventSource("/chat?message=" + encodeURIComponent(msg));
 
     let fullText = "";
 
-    evtSource.onmessage = function(event) {
+    currentStream.onmessage = function(event) {
         fullText += event.data;
         document.getElementById(botId).innerText = fullText;
         chat.scrollTop = chat.scrollHeight;
     };
 
-    evtSource.onerror = function() {
-        evtSource.close();
+    currentStream.onerror = function() {
+        currentStream.close();
         speak(fullText);
     };
+}
+
+// 🔥 STOP BUTTON
+function stopResponse() {
+    if (currentStream) {
+        currentStream.close();
+        fetch("/stop");
+    }
+}
+
+// 🔥 ENTER TO SEND
+function handleKey(e) {
+    if (e.key === "Enter") {
+        sendMessage();
+    }
 }
 
 function startVoice() {
@@ -373,9 +392,10 @@ def logout():
 @login_required
 def chat():
     user_message = request.args.get("message")
-
-    # ✅ FIX: capture user_id BEFORE streaming
     user_id = current_user.id
+
+    # mark stream active
+    active_streams[user_id] = True
 
     def generate():
         full_reply = ""
@@ -391,6 +411,10 @@ def chat():
             )
 
             for chunk in response:
+                # 🔴 STOP BUTTON CHECK
+                if not active_streams.get(user_id):
+                    break
+
                 delta = chunk.choices[0].delta
 
                 if hasattr(delta, "content") and delta.content:
@@ -398,14 +422,13 @@ def chat():
                     full_reply += text
                     yield f"data: {text}\n\n"
 
-            # ✅ SAVE AFTER STREAM (using stored user_id)
+            # save messages
             conn = sqlite3.connect("users.db")
             c = conn.cursor()
 
-            c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+            c.execute("INSERT INTO messages VALUES (NULL, ?, ?, ?)",
                       (user_id, "user", user_message))
-
-            c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
+            c.execute("INSERT INTO messages VALUES (NULL, ?, ?, ?)",
                       (user_id, "assistant", full_reply))
 
             conn.commit()
@@ -414,7 +437,16 @@ def chat():
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"
 
+        finally:
+            active_streams[user_id] = False
+
     return Response(generate(), mimetype="text/event-stream")
+
+@app.route("/stop")
+@login_required
+def stop():
+    active_streams[current_user.id] = False
+    return "stopped"
 # ======================
 # RUN
 # ======================
