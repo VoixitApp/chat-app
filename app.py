@@ -72,44 +72,57 @@ HTML = """
 <style>
 body {
     margin: 0;
-    font-family: Arial;
+    font-family: Arial, sans-serif;
     background: #0f172a;
     color: white;
+    display: flex;
+    height: 100vh;
 }
 
-#topbar {
-    padding: 10px;
-    text-align: center;
+/* ===== SIDEBAR ===== */
+#sidebar {
+    width: 220px;
     background: #020617;
-    border-bottom: 1px solid #1e293b;
+    border-right: 1px solid #1e293b;
+    padding: 15px;
 }
 
-#topbar a {
+#sidebar h2 {
+    font-size: 16px;
+    margin-bottom: 20px;
+}
+
+#sidebar a {
+    display: block;
     color: #38bdf8;
-    margin: 0 10px;
     text-decoration: none;
+    margin-bottom: 10px;
 }
 
-#container {
-    max-width: 700px;
-    margin: auto;
-    height: calc(100vh - 50px);
+/* ===== MAIN ===== */
+#main {
+    flex: 1;
     display: flex;
     flex-direction: column;
 }
 
+/* HEADER */
 #header {
     padding: 15px;
-    text-align: center;
     border-bottom: 1px solid #1e293b;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
+/* CHAT AREA */
 #chat {
     flex: 1;
     overflow-y: auto;
     padding: 20px;
 }
 
+/* MESSAGES */
 .message {
     display: flex;
     margin-bottom: 15px;
@@ -119,18 +132,27 @@ body {
 .bot { justify-content: flex-start; }
 
 .bubble {
-    padding: 12px;
+    padding: 12px 15px;
     border-radius: 12px;
-    max-width: 70%;
+    max-width: 65%;
+    line-height: 1.4;
+    font-size: 14px;
 }
 
-.user .bubble { background: #2563eb; }
-.bot .bubble { background: #1e293b; }
+.user .bubble {
+    background: #2563eb;
+}
 
+.bot .bubble {
+    background: #1e293b;
+}
+
+/* INPUT */
 #input-area {
     display: flex;
     padding: 10px;
     border-top: 1px solid #1e293b;
+    background: #020617;
 }
 
 input {
@@ -138,6 +160,7 @@ input {
     padding: 12px;
     border-radius: 8px;
     border: none;
+    outline: none;
     background: #1e293b;
     color: white;
 }
@@ -151,35 +174,43 @@ button {
     color: white;
     cursor: pointer;
 }
+
+button:hover {
+    background: #1d4ed8;
+}
 </style>
 </head>
 
 <body>
 
-<div id="topbar">
+<!-- SIDEBAR -->
+<div id="sidebar">
+    <h2>🤖 OracleDrop</h2>
     <a href="/login">Login</a>
     <a href="/register">Register</a>
+    <a href="/logout" style="color:red;">Logout</a>
 </div>
 
-<div id="container">
+<!-- MAIN -->
+<div id="main">
 
 <div id="header">
-🤖 OracleDrop | {{username}}
-<a href="/logout" style="color:red;">Logout</a>
+    <div>User: {{username}}</div>
+    <div>AI Assistant</div>
 </div>
 
 <div id="chat">
 {% for msg in messages %}
 <div class="message {% if msg.role == 'user' %}user{% else %}bot{% endif %}">
-<div class="bubble">{{msg.content}}</div>
+    <div class="bubble">{{msg.content}}</div>
 </div>
 {% endfor %}
 </div>
 
 <div id="input-area">
-<input id="message" placeholder="Type or speak..." />
-<button onclick="sendMessage()">Send</button>
-<button onclick="startVoice()">🎤</button>
+    <input id="message" placeholder="Type a message..." />
+    <button onclick="sendMessage()">Send</button>
+    <button onclick="startVoice()">🎤</button>
 </div>
 
 </div>
@@ -210,14 +241,12 @@ function sendMessage() {
 
     chat.scrollTop = chat.scrollHeight;
 
-    // ✅ STREAMING (GET)
     const evtSource = new EventSource("/chat?message=" + encodeURIComponent(msg));
 
     let fullText = "";
 
     evtSource.onmessage = function(event) {
         fullText += event.data;
-
         document.getElementById(botId).innerText = fullText;
         chat.scrollTop = chat.scrollHeight;
     };
@@ -227,7 +256,6 @@ function sendMessage() {
         speak(fullText);
     };
 }
-
 
 function startVoice() {
     let recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
