@@ -346,6 +346,9 @@ def logout():
 def chat():
     user_message = request.args.get("message")
 
+    # ✅ FIX: capture user_id BEFORE streaming
+    user_id = current_user.id
+
     def generate():
         full_reply = ""
 
@@ -362,21 +365,20 @@ def chat():
             for chunk in response:
                 delta = chunk.choices[0].delta
 
-                # ✅ FIXED (NO MORE .get ERROR)
                 if hasattr(delta, "content") and delta.content:
                     text = delta.content
                     full_reply += text
                     yield f"data: {text}\n\n"
 
-            # ✅ SAVE FULL RESPONSE AFTER STREAM
+            # ✅ SAVE AFTER STREAM (using stored user_id)
             conn = sqlite3.connect("users.db")
             c = conn.cursor()
 
             c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-                      (current_user.id, "user", user_message))
+                      (user_id, "user", user_message))
 
             c.execute("INSERT INTO messages (user_id, role, content) VALUES (?, ?, ?)",
-                      (current_user.id, "assistant", full_reply))
+                      (user_id, "assistant", full_reply))
 
             conn.commit()
             conn.close()
