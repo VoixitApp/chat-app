@@ -68,7 +68,16 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User(user_id)
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+
+    c.execute("SELECT id FROM users WHERE id=?", (user_id,))
+    user = c.fetchone()
+    conn.close()
+
+    if user:
+        return User(user_id)
+    return None
 
 # ======================
 # HTML UI
@@ -337,7 +346,15 @@ def home():
     c = conn.cursor()
 
     c.execute("SELECT username FROM users WHERE id=?", (current_user.id,))
-    username = c.fetchone()[0]
+    result = c.fetchone()
+
+    if not result:
+        # 🔥 user missing → force logout
+        logout_user()
+        return redirect(url_for("login"))
+
+    username = result[0]
+    
 
     # GET CHATS
     c.execute("SELECT id, title FROM chats WHERE user_id=?", (current_user.id,))
