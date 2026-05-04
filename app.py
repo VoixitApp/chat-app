@@ -125,6 +125,10 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
     <div>User: {{username}}</div>
 </div>
 
+<div id="status" style="padding:5px; font-size:12px; color:#38bdf8;">
+    Idle
+</div>
+
 <div id="chat">
 {% for msg in messages %}
 <div class="message {% if msg.role == 'user' %}user{% else %}bot{% endif %}">
@@ -242,6 +246,8 @@ function initRecognition(){
         }
 
         document.getElementById("message").value = transcript;
+        document.getElementById("status").innerText = "Listening for wake word...";
+        document.getElementById("status").innerText = "Activated...";
 
         clearTimeout(silenceTimer);
 
@@ -268,11 +274,65 @@ function initRecognition(){
 // =======================
 // ONE-TIME VOICE
 // =======================
-function startVoice(){
-    recognition = initRecognition();
-    if(recognition){
-        recognition.start();
+let recognition;
+let listeningForWakeWord = false;
+let activated = false;
+
+function startVoice() {
+    if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        alert("Speech recognition not supported in this browser");
+        return;
     }
+
+    recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+
+    recognition.continuous = true; // 🔥 keep listening
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    listeningForWakeWord = true;
+    activated = false;
+
+    recognition.start();
+
+    console.log("🎤 Listening for 'Hey Oracle'...");
+
+    recognition.onresult = function(event) {
+        let transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+
+        console.log("Heard:", transcript);
+
+        // 🔥 WAKE WORD DETECTION
+        if (listeningForWakeWord && transcript.includes("hey oracle")) {
+            activated = true;
+            listeningForWakeWord = false;
+
+            speak("Yes, I'm listening");
+            console.log("✅ Wake word detected");
+
+            return;
+        }
+
+        // 🔥 AFTER WAKE WORD → SEND MESSAGE
+        if (activated) {
+            document.getElementById("message").value = transcript;
+            sendMessage();
+
+            activated = false;
+            listeningForWakeWord = true;
+        }
+    };
+
+    recognition.onerror = function(e) {
+        console.log("Speech error:", e);
+    };
+
+    recognition.onend = function() {
+        // 🔥 AUTO RESTART (IMPORTANT)
+        if (listeningForWakeWord) {
+            recognition.start();
+        }
+    };
 }
 
 // =======================
