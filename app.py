@@ -138,6 +138,7 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
     <button onclick="sendMessage()">Send</button>
     <button onclick="stopResponse()">⛔</button>
     <button onclick="startVoice()">🎤</button>
+    <button onclick="toggleAssistant()">🧠 Assistant</button>
 </div>
 
 </div>
@@ -170,8 +171,109 @@ function sendMessage(){
 
     currentStream.onerror = function(){
         currentStream.close();
-        speak(full);
+
+        if (assistantMode) {
+            speak(full);
+    }
+};
+
+let recognition;
+let assistantMode = false;
+let isSpeaking = false;
+let silenceTimer = null;
+
+// 🎤 START ONE-TIME VOICE (existing)
+function startVoice() {
+    initRecognition();
+    recognition.start();
+}
+
+// 🧠 TOGGLE FULL ASSISTANT
+function toggleAssistant() {
+    assistantMode = !assistantMode;
+
+    if (assistantMode) {
+        console.log("🧠 Assistant Mode ON");
+        startContinuousListening();
+    } else {
+        console.log("🧠 Assistant Mode OFF");
+        stopContinuousListening();
+    }
+}
+
+// 🎤 INIT SPEECH RECOGNITION
+function initRecognition() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = function (event) {
+        let transcript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+        }
+
+        document.getElementById("message").value = transcript;
+
+        // 🧠 Detect pause (user finished speaking)
+        clearTimeout(silenceTimer);
+
+        silenceTimer = setTimeout(() => {
+            if (!isSpeaking && transcript.trim()) {
+                sendVoiceMessage(transcript);
+            }
+        }, 1200); // pause delay
     };
+
+    recognition.onerror = function (e) {
+        console.log("Voice error:", e.error);
+    };
+
+    recognition.onend = function () {
+        if (assistantMode && !isSpeaking) {
+            recognition.start(); // auto restart
+        }
+    };
+}
+
+// 🎤 START CONTINUOUS
+function startContinuousListening() {
+    initRecognition();
+    recognition.start();
+}
+
+// 🛑 STOP CONTINUOUS
+function stopContinuousListening() {
+    if (recognition) recognition.stop();
+}
+
+// 🔥 SEND VOICE MESSAGE
+function sendVoiceMessage(text) {
+    document.getElementById("message").value = text;
+    sendMessage();
+}
+
+// 🔊 SPEAK AI RESPONSE
+function speak(text) {
+    isSpeaking = true;
+
+    let speech = new SpeechSynthesisUtterance(text);
+    speech.lang = "en-US";
+
+    speech.onend = () => {
+        isSpeaking = false;
+
+        // resume listening
+        if (assistantMode) {
+            recognition.start();
+        }
+    };
+
+    window.speechSynthesis.speak(speech);
 }
 
 function startVoice() {
@@ -222,8 +324,12 @@ function speak(text) {
 function stopResponse(){
     if(currentStream){
         currentStream.close();
-        fetch("/stop");
     }
+
+    assistantMode = false;
+    stopContinuousListening();
+
+    fetch("/stop");
 }
 
 function handleKey(e){
