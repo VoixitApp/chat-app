@@ -144,8 +144,16 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
 </div>
 
 <script>
-let currentStream = null;
 
+let currentStream = null;
+let recognition = null;
+let assistantMode = false;
+let isSpeaking = false;
+let silenceTimer = null;
+
+// =======================
+// SEND MESSAGE
+// =======================
 function sendMessage(){
     let msg = document.getElementById("message").value;
     if(!msg) return;
@@ -156,12 +164,18 @@ function sendMessage(){
     document.getElementById("message").value = "";
 
     let id = "bot-"+Date.now();
+
     chat.innerHTML += `<div class="message bot"><div class="bubble" id="${id}">...</div></div>`;
     chat.scrollTop = chat.scrollHeight;
 
-    currentStream = new EventSource("/chat?message="+encodeURIComponent(msg)+"&chat_id={{current_chat}}");
+    try {
+        currentStream = new EventSource("/chat?message="+encodeURIComponent(msg)+"&chat_id={{current_chat}}");
+    } catch(e) {
+        console.error("Stream error:", e);
+        return;
+    }
 
-    let full="";
+    let full = "";
 
     currentStream.onmessage = function(e){
         full += e.data;
@@ -172,103 +186,136 @@ function sendMessage(){
     currentStream.onerror = function(){
         currentStream.close();
 
-        if (assistantMode) {
+        if (assistantMode && full) {
             speak(full);
-    }
-};
-
-let recognition;
-let assistantMode = false;
-let isSpeaking = false;
-let silenceTimer = null;
-
-// 🎤 START ONE-TIME VOICE (existing)
-function startVoice() {
-    initRecognition();
-    recognition.start();
+        }
+    };
 }
 
-// 🧠 TOGGLE FULL ASSISTANT
-function toggleAssistant() {
-    assistantMode = !assistantMode;
+// =======================
+// STOP BUTTON
+// =======================
+function stopResponse(){
+    if(currentStream){
+        currentStream.close();
+    }
 
-    if (assistantMode) {
-        console.log("🧠 Assistant Mode ON");
-        startContinuousListening();
-    } else {
-        console.log("🧠 Assistant Mode OFF");
-        stopContinuousListening();
+    assistantMode = false;
+
+    if(recognition){
+        recognition.stop();
+    }
+
+    fetch("/stop");
+}
+
+// =======================
+// ENTER KEY
+// =======================
+function handleKey(e){
+    if(e.key === "Enter"){
+        sendMessage();
     }
 }
 
-// 🎤 INIT SPEECH RECOGNITION
-function initRecognition() {
+// =======================
+// SAFE VOICE INIT
+// =======================
+function initRecognition(){
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = true;
-    recognition.interimResults = true;
+    if(!SpeechRecognition){
+        alert("Voice not supported in this browser");
+        return null;
+    }
 
-    recognition.onresult = function (event) {
+    let rec = new SpeechRecognition();
+    rec.lang = "en-US";
+    rec.continuous = true;
+    rec.interimResults = true;
+
+    rec.onresult = function(event){
         let transcript = "";
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
+        for(let i = event.resultIndex; i < event.results.length; i++){
             transcript += event.results[i][0].transcript;
         }
 
         document.getElementById("message").value = transcript;
 
-        // 🧠 Detect pause (user finished speaking)
         clearTimeout(silenceTimer);
 
-        silenceTimer = setTimeout(() => {
-            if (!isSpeaking && transcript.trim()) {
+        silenceTimer = setTimeout(()=>{
+            if(!isSpeaking && transcript.trim()){
                 sendVoiceMessage(transcript);
             }
-        }, 1200); // pause delay
+        }, 1200);
     };
 
-    recognition.onerror = function (e) {
+    rec.onerror = function(e){
         console.log("Voice error:", e.error);
     };
 
-    recognition.onend = function () {
-        if (assistantMode && !isSpeaking) {
-            recognition.start(); // auto restart
+    rec.onend = function(){
+        if(assistantMode && !isSpeaking){
+            rec.start();
         }
     };
+
+    return rec;
 }
 
-// 🎤 START CONTINUOUS
-function startContinuousListening() {
-    initRecognition();
-    recognition.start();
+// =======================
+// ONE-TIME VOICE
+// =======================
+function startVoice(){
+    recognition = initRecognition();
+    if(recognition){
+        recognition.start();
+    }
 }
 
-// 🛑 STOP CONTINUOUS
-function stopContinuousListening() {
-    if (recognition) recognition.stop();
+// =======================
+// ASSISTANT MODE
+// =======================
+function toggleAssistant(){
+    assistantMode = !assistantMode;
+
+    if(assistantMode){
+        recognition = initRecognition();
+        if(recognition){
+            recognition.start();
+        }
+        console.log("Assistant ON");
+    } else {
+        if(recognition){
+            recognition.stop();
+        }
+        console.log("Assistant OFF");
+    }
 }
 
-// 🔥 SEND VOICE MESSAGE
-function sendVoiceMessage(text) {
+// =======================
+// SEND VOICE MESSAGE
+// =======================
+function sendVoiceMessage(text){
     document.getElementById("message").value = text;
     sendMessage();
 }
 
-// 🔊 SPEAK AI RESPONSE
-function speak(text) {
+// =======================
+// SPEAK
+// =======================
+function speak(text){
     isSpeaking = true;
 
     let speech = new SpeechSynthesisUtterance(text);
     speech.lang = "en-US";
 
-    speech.onend = () => {
+    speech.onend = ()=>{
         isSpeaking = false;
 
-        // resume listening
-        if (assistantMode) {
+        if(assistantMode && recognition){
             recognition.start();
         }
     };
@@ -276,65 +323,6 @@ function speak(text) {
     window.speechSynthesis.speak(speech);
 }
 
-function startVoice() {
-    try {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-        if (!SpeechRecognition) {
-            alert("Voice not supported in this browser");
-            return;
-        }
-
-        let recognition = new SpeechRecognition();
-
-        recognition.lang = "en-US";
-        recognition.interimResults = false;
-
-        recognition.start();
-
-        recognition.onstart = function () {
-            console.log("🎤 Listening...");
-        };
-
-        recognition.onresult = function (event) {
-            let transcript = event.results[0][0].transcript;
-
-            document.getElementById("message").value = transcript;
-
-            // 🔥 AUTO SEND AFTER SPEAKING
-            sendMessage();
-        };
-
-        recognition.onerror = function (event) {
-            console.error("Voice error:", event.error);
-        };
-
-    } catch (e) {
-        console.error(e);
-    }
-}
-
-
-function speak(text) {
-    let speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US";
-    window.speechSynthesis.speak(speech);
-}
-
-function stopResponse(){
-    if(currentStream){
-        currentStream.close();
-    }
-
-    assistantMode = false;
-    stopContinuousListening();
-
-    fetch("/stop");
-}
-
-function handleKey(e){
-    if(e.key==="Enter"){sendMessage();}
-}
 </script>
 
 </body>
