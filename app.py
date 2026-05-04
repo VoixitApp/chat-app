@@ -129,6 +129,10 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
     Idle
 </div>
 
+<div id="status" style="padding:5px; font-size:12px; color:#38bdf8;">
+    Idle
+</div>
+
 <div id="chat">
 {% for msg in messages %}
 <div class="message {% if msg.role == 'user' %}user{% else %}bot{% endif %}">
@@ -148,241 +152,174 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
 </div>
 
 <script>
-
 let currentStream = null;
 let recognition = null;
-let assistantMode = false;
-let isSpeaking = false;
-let silenceTimer = null;
+let isListening = false;
 
 // =======================
 // SEND MESSAGE
 // =======================
-function sendMessage(){
-    let msg = document.getElementById("message").value;
-    if(!msg) return;
+function sendMessage() {
+    let input = document.getElementById("message");
+    let msg = input.value.trim();
+    if (!msg) return;
 
     let chat = document.getElementById("chat");
 
-    chat.innerHTML += `<div class="message user"><div class="bubble">${msg}</div></div>`;
-    document.getElementById("message").value = "";
+    // user bubble
+    chat.innerHTML += `
+        <div class="message user">
+            <div class="bubble">${msg}</div>
+        </div>
+    `;
 
-    let id = "bot-"+Date.now();
+    input.value = "";
 
-    chat.innerHTML += `<div class="message bot"><div class="bubble" id="${id}">...</div></div>`;
+    // bot bubble
+    let botId = "bot-" + Date.now();
+    chat.innerHTML += `
+        <div class="message bot">
+            <div class="bubble" id="${botId}">Typing...</div>
+        </div>
+    `;
+
     chat.scrollTop = chat.scrollHeight;
 
-    try {
-        currentStream = new EventSource("/chat?message="+encodeURIComponent(msg)+"&chat_id={{current_chat}}");
-    } catch(e) {
-        console.error("Stream error:", e);
-        return;
-    }
+    // 🔥 FIX: assign stream properly
+    currentStream = new EventSource(
+        "/chat?message=" + encodeURIComponent(msg) + "&chat_id={{current_chat}}"
+    );
 
-    let full = "";
+    let fullText = "";
 
-    currentStream.onmessage = function(e){
-        full += e.data;
-        document.getElementById(id).innerText = full;
+    currentStream.onmessage = function(event) {
+        fullText += event.data;
+        document.getElementById(botId).innerText = fullText;
         chat.scrollTop = chat.scrollHeight;
     };
 
-    currentStream.onerror = function(){
+    currentStream.onerror = function() {
         currentStream.close();
-
-        if (assistantMode && full) {
-            speak(full);
-        }
+        speak(fullText);
     };
 }
 
 // =======================
-// STOP BUTTON
+// STOP RESPONSE
 // =======================
-function stopResponse(){
-    if(currentStream){
+function stopResponse() {
+    if (currentStream) {
         currentStream.close();
+        fetch("/stop");
     }
-
-    assistantMode = false;
-
-    if(recognition){
-        recognition.stop();
-    }
-
-    fetch("/stop");
 }
 
 // =======================
 // ENTER KEY
 // =======================
-function handleKey(e){
-    if(e.key === "Enter"){
+function handleKey(e) {
+    if (e.key === "Enter") {
         sendMessage();
     }
 }
 
 // =======================
-// SAFE VOICE INIT
+// VOICE + WAKE WORD
 // =======================
-function initRecognition(){
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-    if(!SpeechRecognition){
-        alert("Voice not supported in this browser");
-        return null;
+function startVoice() {
+    if (isListening) {
+        alert("Already listening...");
+        return;
     }
 
-    let rec = new SpeechRecognition();
-    rec.lang = "en-US";
-    rec.continuous = true;
-    rec.interimResults = true;
-
-    rec.onresult = function(event){
-        let transcript = "";
-
-        for(let i = event.resultIndex; i < event.results.length; i++){
-            transcript += event.results[i][0].transcript;
-        }
-
-        document.getElementById("message").value = transcript;
-        document.getElementById("status").innerText = "Listening for wake word...";
-        document.getElementById("status").innerText = "Activated...";
-
-        clearTimeout(silenceTimer);
-
-        silenceTimer = setTimeout(()=>{
-            if(!isSpeaking && transcript.trim()){
-                sendVoiceMessage(transcript);
-            }
-        }, 1200);
-    };
-
-    rec.onerror = function(e){
-        console.log("Voice error:", e.error);
-    };
-
-    rec.onend = function(){
-        if(assistantMode && !isSpeaking){
-            rec.start();
-        }
-    };
-
-    return rec;
-}
-
-// =======================
-// ONE-TIME VOICE
-// =======================
-let recognition;
-let listeningForWakeWord = false;
-let activated = false;
-
-function startVoice() {
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        alert("Speech recognition not supported in this browser");
+        alert("Speech recognition not supported");
         return;
     }
 
     recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
-    recognition.continuous = true; // 🔥 keep listening
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    listeningForWakeWord = true;
-    activated = false;
+    let waitingWake = true;
 
     recognition.start();
+    isListening = true;
 
-    console.log("🎤 Listening for 'Hey Oracle'...");
+    updateStatus("🎤 Listening for 'Hey Oracle'...");
 
     recognition.onresult = function(event) {
-        let transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        try {
+            let transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
 
-        console.log("Heard:", transcript);
+            console.log("Heard:", transcript);
 
-        // 🔥 WAKE WORD DETECTION
-        if (listeningForWakeWord && transcript.includes("hey oracle")) {
-            activated = true;
-            listeningForWakeWord = false;
+            // WAKE WORD
+            if (waitingWake && transcript.includes("hey oracle")) {
+                waitingWake = false;
+                updateStatus("✅ Activated...");
+                speak("Yes, I'm listening");
+                return;
+            }
 
-            speak("Yes, I'm listening");
-            console.log("✅ Wake word detected");
+            // AFTER WAKE WORD
+            if (!waitingWake) {
+                document.getElementById("message").value = transcript;
+                sendMessage();
 
-            return;
-        }
+                waitingWake = true;
+                updateStatus("🎤 Listening again...");
+            }
 
-        // 🔥 AFTER WAKE WORD → SEND MESSAGE
-        if (activated) {
-            document.getElementById("message").value = transcript;
-            sendMessage();
-
-            activated = false;
-            listeningForWakeWord = true;
+        } catch (err) {
+            console.log("Voice error:", err);
         }
     };
 
     recognition.onerror = function(e) {
         console.log("Speech error:", e);
+        updateStatus("❌ Mic error");
     };
 
     recognition.onend = function() {
-        // 🔥 AUTO RESTART (IMPORTANT)
-        if (listeningForWakeWord) {
+        // 🔥 AUTO RESTART safely
+        if (isListening) {
             recognition.start();
         }
     };
 }
 
 // =======================
-// ASSISTANT MODE
+// TEXT TO SPEECH
 // =======================
-function toggleAssistant(){
-    assistantMode = !assistantMode;
-
-    if(assistantMode){
-        recognition = initRecognition();
-        if(recognition){
-            recognition.start();
-        }
-        console.log("Assistant ON");
-    } else {
-        if(recognition){
-            recognition.stop();
-        }
-        console.log("Assistant OFF");
-    }
-}
-
-// =======================
-// SEND VOICE MESSAGE
-// =======================
-function sendVoiceMessage(text){
-    document.getElementById("message").value = text;
-    sendMessage();
-}
-
-// =======================
-// SPEAK
-// =======================
-function speak(text){
-    isSpeaking = true;
+function speak(text) {
+    if (!text) return;
 
     let speech = new SpeechSynthesisUtterance(text);
-    speech.lang = "en-US";
-
-    speech.onend = ()=>{
-        isSpeaking = false;
-
-        if(assistantMode && recognition){
-            recognition.start();
-        }
-    };
+    speech.rate = 1;
+    speech.pitch = 1;
+    speech.volume = 1;
 
     window.speechSynthesis.speak(speech);
 }
 
+// =======================
+// UI STATUS
+// =======================
+function updateStatus(text) {
+    let el = document.getElementById("status");
+    if (el) el.innerText = text;
+}
+
+// =======================
+// AUTO SCROLL
+// =======================
+window.onload = function() {
+    let chat = document.getElementById("chat");
+    chat.scrollTop = chat.scrollHeight;
+};
 </script>
 
 </body>
