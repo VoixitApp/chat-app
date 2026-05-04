@@ -343,17 +343,14 @@ window.onload = () => {
 @login_required
 def home():
 
-    if not current_user.is_authenticated:
-        return redirect(url_for("login"))
-
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
     c.execute("SELECT username FROM users WHERE id=?", (current_user.id,))
     result = c.fetchone()
 
+    # 🔥 THIS IS THE REAL FIX
     if not result:
-        # 🔥 user missing → force logout
         logout_user()
         return redirect(url_for("login"))
 
