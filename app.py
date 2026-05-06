@@ -26,9 +26,6 @@ def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
-    # 🔥 DROP OLD TABLES (IMPORTANT FIX)
-    c.execute("DROP TABLE IF EXISTS messages")
-    c.execute("DROP TABLE IF EXISTS chats")
 
     # USERS
     c.execute("""
@@ -129,9 +126,6 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
     Idle
 </div>
 
-<div id="status" style="padding:5px; font-size:12px; color:#38bdf8;">
-    Idle
-</div>
 
 <div id="chat">
 {% for msg in messages %}
@@ -141,12 +135,22 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
 {% endfor %}
 </div>
 
+<div id="voice-status"
+style="font-size:12px;color:#38bdf8;padding:5px;">
+Voice assistant inactive
+</div>
+
 <div id="input-area">
     <input id="message" placeholder="Type message..." onkeydown="handleKey(event)">
     <button type="button" onclick="sendMessage()">Send</button>
     <button type="button" onclick="stopResponse()">⛔ Stop</button>
-    <button type="button" onclick="startVoice()">🎤</button>
     <button type="button" onclick="toggleAssistant()">🧠 Assistant</button>
+    <button type="button" onclick="startVoice()">🎤 Start</button>
+
+<button type="button" onclick="stopVoiceAssistant()">
+🛑 Voice Off
+</button>
+    
 </div>
 
 </div>
@@ -245,27 +249,144 @@ function handleKey(e) {
 // ======================
 // VOICE (SAFE VERSION)
 // ======================
+
+let wakeMode = false;
+let assistantActivated = false;
+
+// ======================
+// START VOICE ASSISTANT
+// ======================
 function startVoice() {
+
     try {
+
+        // 🔥 browser support
         if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-            alert("Speech not supported");
+            alert("Speech recognition not supported");
+            return;
+        }
+
+        // 🔥 avoid duplicates
+        if (wakeMode) {
+            console.log("Already listening...");
             return;
         }
 
         recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
+        recognition.continuous = false;
+        recognition.interimResults = false;
         recognition.lang = "en-US";
+
+        wakeMode = true;
 
         recognition.start();
 
-        recognition.onresult = function(e) {
-            let text = e.results[0][0].transcript;
-            document.getElementById("message").value = text;
+        console.log("🎤 Wake mode started");
+
+        speak("Voice assistant activated");
+
+        recognition.onresult = function(event) {
+
+            let transcript =
+                event.results[event.results.length - 1][0].transcript
+                .toLowerCase()
+                .trim();
+
+            console.log("Heard:", transcript);
+
+            // ======================
+            // WAKE WORD
+            // ======================
+            if (!assistantActivated && transcript.includes("hey oracle")) {
+
+                assistantActivated = true;
+
+                console.log("✅ Wake word detected");
+
+                speak("Yes, I'm listening");
+
+                return;
+            }
+
+            // ======================
+            // COMMAND MODE
+            // ======================
+            if (assistantActivated) {
+
+                document.getElementById("message").value = transcript;
+
+                sendMessage();
+
+                assistantActivated = false;
+            }
+        };
+
+        // ======================
+        // ERRORS
+        // ======================
+        recognition.onerror = function(event) {
+
+            console.log("Speech error:", event.error);
+
+            // ignore harmless browser errors
+            if (
+                event.error === "no-speech" ||
+                event.error === "aborted"
+            ) {
+                return;
+            }
+        };
+        
+        document.getElementById("voice-status").innerText =
+        "🎤 Listening for 'Hey Oracle'";
+        
+        document.getElementById("voice-status").innerText =
+        "✅ Activated";
+
+        // ======================
+        // AUTO RESTART
+        // ======================
+        recognition.onend = function() {
+
+            console.log("Recognition ended");
+
+            if (wakeMode) {
+
+                try {
+                    recognition.start();
+                } catch (e) {
+                    console.log("Restart blocked:", e);
+                }
+
+            }
         };
 
     } catch (err) {
-        console.error("VOICE ERROR:", err);
+
+        console.error("VOICE ASSISTANT ERROR:", err);
+
     }
+}
+
+// ======================
+// STOP VOICE ASSISTANT
+// ======================
+function stopVoiceAssistant() {
+
+    wakeMode = false;
+    assistantActivated = false;
+
+    if (recognition) {
+        recognition.stop();
+    }
+
+    speak("Voice assistant stopped");
+
+    console.log("🛑 Voice assistant stopped");
+
+    document.getElementById("voice-status").innerText =
+    "🛑 Voice assistant stopped";
 }
 
 // ======================
