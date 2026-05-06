@@ -143,7 +143,7 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
 
 <div id="input-area">
     <input id="message" placeholder="Type message..." onkeydown="handleKey(event)">
-    <button onclick="sendMessage()">Send</button>
+    <button type="button" onclick="sendMessage()">Send</button>
     <button onclick="stopResponse()">⛔</button>
     <button onclick="startVoice()">🎤</button>
     <button onclick="toggleAssistant()">🧠 Assistant</button>
@@ -155,6 +155,8 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
 let currentStream = null;
 let recognition = null;
 let isListening = false;
+
+console.log("JS Loaded");
 
 // =======================
 // SEND MESSAGE
@@ -189,6 +191,11 @@ function sendMessage() {
     currentStream = new EventSource(
         "/chat?message=" + encodeURIComponent(msg) + "&chat_id={{current_chat}}"
     );
+
+    if (!currentStream) {
+        alert("Stream failed");
+        return;
+    }
 
     let fullText = "";
 
@@ -227,64 +234,66 @@ function handleKey(e) {
 // VOICE + WAKE WORD
 // =======================
 function startVoice() {
-    if (isListening) {
-        alert("Already listening...");
-        return;
-    }
-
     if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
         alert("Speech recognition not supported");
         return;
     }
 
+    // 🔥 Force permission request first
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+            initRecognition();
+        })
+        .catch(err => {
+            alert("Microphone permission denied");
+        });
+}
+
+    let recognition;
+let isListening = false;
+let activated = false;
+
+function initRecognition() {
     recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
     recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = "en-US";
 
-    let waitingWake = true;
+    isListening = true;
+    activated = false;
 
     recognition.start();
-    isListening = true;
 
-    updateStatus("🎤 Listening for 'Hey Oracle'...");
+    console.log("🎤 Listening...");
 
     recognition.onresult = function(event) {
-        try {
-            let transcript = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
+        let text = event.results[event.results.length - 1][0].transcript.toLowerCase().trim();
 
-            console.log("Heard:", transcript);
+        console.log("Heard:", text);
 
-            // WAKE WORD
-            if (waitingWake && transcript.includes("hey oracle")) {
-                waitingWake = false;
-                updateStatus("✅ Activated...");
-                speak("Yes, I'm listening");
-                return;
-            }
+        // 🔥 WAKE WORD
+        if (!activated && text.includes("hey oracle")) {
+            activated = true;
+            speak("Yes, I'm listening");
+            return;
+        }
 
-            // AFTER WAKE WORD
-            if (!waitingWake) {
-                document.getElementById("message").value = transcript;
-                sendMessage();
+        // 🔥 COMMAND AFTER WAKE WORD
+        if (activated) {
+            document.getElementById("message").value = text;
+            sendMessage();
 
-                waitingWake = true;
-                updateStatus("🎤 Listening again...");
-            }
-
-        } catch (err) {
-            console.log("Voice error:", err);
+            activated = false;
         }
     };
 
     recognition.onerror = function(e) {
         console.log("Speech error:", e);
-        updateStatus("❌ Mic error");
     };
 
     recognition.onend = function() {
-        // 🔥 AUTO RESTART safely
+        // 🔥 Always restart
         if (isListening) {
             recognition.start();
         }
