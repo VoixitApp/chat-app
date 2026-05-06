@@ -144,14 +144,16 @@ button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#
 <div id="input-area">
     <input id="message" placeholder="Type message..." onkeydown="handleKey(event)">
     <button type="button" onclick="sendMessage()">Send</button>
-    <button onclick="stopResponse()">⛔</button>
-    <button onclick="startVoice()">🎤</button>
-    <button onclick="toggleAssistant()">🧠 Assistant</button>
+    <button type="button" onclick="stopResponse()">⛔ Stop</button>
+    <button type="button" onclick="startVoice()">🎤</button>
+    <button type="button" onclick="toggleAssistant()">🧠 Assistant</button>
 </div>
 
 </div>
 
 <script>
+console.log("JS Loaded");
+
 let currentStream = null;
 let recognition = null;
 let isListening = false;
