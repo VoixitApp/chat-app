@@ -510,6 +510,17 @@ def logout():
 # CHAT STREAM
 # ======================
 
+@app.route("/reset_db")
+def reset_db():
+    import os
+
+    if os.path.exists("users.db"):
+        os.remove("users.db")
+
+    init_db()
+
+    return "Database reset successful"
+
 @app.route("/chat")
 @login_required
 def chat():
