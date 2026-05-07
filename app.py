@@ -26,10 +26,14 @@ def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
+    # DELETE OLD TABLES
+    c.execute("DROP TABLE IF EXISTS users")
+    c.execute("DROP TABLE IF EXISTS chats")
+    c.execute("DROP TABLE IF EXISTS messages")
 
     # USERS
     c.execute("""
-    CREATE TABLE IF NOT EXISTS users (
+    CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
         password TEXT
@@ -38,7 +42,7 @@ def init_db():
 
     # CHATS
     c.execute("""
-    CREATE TABLE IF NOT EXISTS chats (
+    CREATE TABLE chats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         title TEXT
@@ -47,7 +51,7 @@ def init_db():
 
     # MESSAGES
     c.execute("""
-    CREATE TABLE IF NOT EXISTS messages (
+    CREATE TABLE messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id INTEGER,
         role TEXT,
