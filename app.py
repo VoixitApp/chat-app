@@ -521,48 +521,6 @@ def logout():
 # CHAT STREAM
 # ======================
 
-@app.route("/force_reset")
-def force_reset():
-
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-
-    c.execute("DROP TABLE IF EXISTS messages")
-    c.execute("DROP TABLE IF EXISTS chats")
-    c.execute("DROP TABLE IF EXISTS users")
-
-    conn.commit()
-
-    c.execute("""
-    CREATE TABLE users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        password TEXT
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE chats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        title TEXT
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        chat_id INTEGER,
-        role TEXT,
-        content TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-    return "DATABASE RESET SUCCESS"
-
 @app.route("/chat")
 @login_required
 def chat():
