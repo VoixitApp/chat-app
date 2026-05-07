@@ -38,7 +38,7 @@ def init_db():
 
     # CHATS
     c.execute("""
-    CREATE TABLE chats (
+    CREATE TABLE IF NOT EXISTS chats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         title TEXT
@@ -47,7 +47,7 @@ def init_db():
 
     # MESSAGES
     c.execute("""
-    CREATE TABLE messages (
+    CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id INTEGER,
         role TEXT,
