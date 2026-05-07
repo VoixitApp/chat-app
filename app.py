@@ -144,7 +144,7 @@ Voice assistant inactive
     <input id="message" placeholder="Type message..." onkeydown="handleKey(event)">
     <button type="button" onclick="sendMessage()">Send</button>
     <button type="button" onclick="stopResponse()">⛔ Stop</button>
-    <button type="button" onclick="toggleAssistant()">🧠 Assistant</button>
+    <button type="button" onclick="startVoice()">🧠 Assistant</button>
     <button type="button" onclick="startVoice()">🎤 Start</button>
 
 <button type="button" onclick="stopVoiceAssistant()">
@@ -274,7 +274,7 @@ function startVoice() {
 
         recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
-        recognition.continuous = false;
+        recognition.continuous = true;
         recognition.interimResults = false;
         recognition.lang = "en-US";
 
@@ -301,6 +301,9 @@ function startVoice() {
             if (!assistantActivated && transcript.includes("hey oracle")) {
 
                 assistantActivated = true;
+
+                document.getElementById("voice-status").innerText =
+                "✅ Activated";
 
                 console.log("✅ Wake word detected");
 
@@ -340,9 +343,7 @@ function startVoice() {
         
         document.getElementById("voice-status").innerText =
         "🎤 Listening for 'Hey Oracle'";
-        
-        document.getElementById("voice-status").innerText =
-        "✅ Activated";
+    
 
         // ======================
         // AUTO RESTART
@@ -352,12 +353,16 @@ function startVoice() {
             console.log("Recognition ended");
 
             if (wakeMode) {
+            
+                setTimeout(() => {
 
-                try {
-                    recognition.start();
-                } catch (e) {
-                    console.log("Restart blocked:", e);
-                }
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.log("Restart blocked:", e);
+                    }
+
+                }, 1000);
 
             }
         };
@@ -405,8 +410,14 @@ function speak(text) {
 // INIT
 // ======================
 window.onload = function() {
+
     let chat = document.getElementById("chat");
-    if (chat) chat.scrollTop = chat.scrollHeight;
+
+    if (chat) {
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    console.log("OracleDrop Ready ✅");
 };
 
 </script>
@@ -509,7 +520,6 @@ def logout():
 # ======================
 # CHAT STREAM
 # ======================
-
 
 @app.route("/chat")
 @login_required
