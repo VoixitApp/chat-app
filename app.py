@@ -19,6 +19,9 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 active_streams = {}
 
+# FORCE DELETE OLD DATABASE
+if os.path.exists("users.db"):
+    os.remove("users.db")
 # ======================
 # DATABASE INIT (FORCE FIX)
 # ======================
