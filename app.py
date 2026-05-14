@@ -26,14 +26,9 @@ def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
 
-    # DELETE OLD TABLES
-    c.execute("DROP TABLE IF EXISTS users")
-    c.execute("DROP TABLE IF EXISTS chats")
-    c.execute("DROP TABLE IF EXISTS messages")
-
     # USERS
     c.execute("""
-    CREATE TABLE users (
+    CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
         password TEXT
@@ -42,7 +37,7 @@ def init_db():
 
     # CHATS
     c.execute("""
-    CREATE TABLE chats (
+    CREATE TABLE IF NOT EXISTS chats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         title TEXT
@@ -51,7 +46,7 @@ def init_db():
 
     # MESSAGES
     c.execute("""
-    CREATE TABLE messages (
+    CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id INTEGER,
         role TEXT,
@@ -148,7 +143,6 @@ Voice assistant inactive
     <input id="message" placeholder="Type message..." onkeydown="handleKey(event)">
     <button type="button" onclick="sendMessage()">Send</button>
     <button type="button" onclick="stopResponse()">⛔ Stop</button>
-    <button type="button" onclick="startVoice()">🧠 Assistant</button>
     <button type="button" onclick="startVoice()">🎤 Start</button>
 
 <button type="button" onclick="stopVoiceAssistant()">
@@ -278,7 +272,7 @@ function startVoice() {
 
         recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
 
-        recognition.continuous = true;
+        recognition.continuous = false;
         recognition.interimResults = false;
         recognition.lang = "en-US";
 
