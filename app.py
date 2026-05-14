@@ -19,9 +19,7 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 active_streams = {}
 
-# FORCE DELETE OLD DATABASE
-if os.path.exists("users.db"):
-    os.remove("users.db")
+
 # ======================
 # DATABASE INIT (FORCE FIX)
 # ======================
@@ -349,24 +347,7 @@ function startVoice() {
         // ======================
         // AUTO RESTART
         // ======================
-        recognition.onend = function() {
-
-            console.log("Recognition ended");
-
-            if (wakeMode) {
-            
-                setTimeout(() => {
-
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        console.log("Restart blocked:", e);
-                    }
-
-                }, 1000);
-
-            }
-        };
+       
 
     } catch (err) {
 
