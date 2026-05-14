@@ -568,15 +568,6 @@ def stop():
     active_streams[current_user.id]=False
     return "stopped"
 
-@app.route("/reset_db")
-def reset_db():
-
-    if os.path.exists("users.db"):
-        os.remove("users.db")
-
-    init_db()
-
-    return "Database reset complete"
 
 # ======================
 # RUN
