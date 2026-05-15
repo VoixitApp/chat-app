@@ -87,21 +87,162 @@ HTML = """
 <head>
 <title>OracleDrop AI</title>
 <style>
-body {margin:0;font-family:Arial;background:#0f172a;color:white;display:flex;height:100vh;}
-#sidebar {width:220px;background:#020617;border-right:1px solid #1e293b;padding:15px;}
-#sidebar a {display:block;color:#38bdf8;margin-bottom:10px;text-decoration:none;}
-#main {flex:1;display:flex;flex-direction:column;}
-#header {padding:15px;border-bottom:1px solid #1e293b;display:flex;justify-content:space-between;}
-#chat {flex:1;overflow-y:auto;padding:20px;}
-.message {display:flex;margin-bottom:15px;}
-.user {justify-content:flex-end;}
-.bot {justify-content:flex-start;}
-.bubble {padding:12px;border-radius:12px;max-width:65%;}
-.user .bubble {background:#2563eb;}
-.bot .bubble {background:#1e293b;}
-#input-area {display:flex;padding:10px;border-top:1px solid #1e293b;}
-input {flex:1;padding:12px;border-radius:8px;border:none;background:#1e293b;color:white;}
-button {margin-left:10px;padding:12px;border:none;border-radius:8px;background:#2563eb;color:white;}
+
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    font-family:Arial;
+    background:#0f172a;
+    color:white;
+    display:flex;
+    height:100vh;
+    overflow:hidden;
+}
+
+#sidebar{
+    width:220px;
+    background:#020617;
+    border-right:1px solid #1e293b;
+    padding:15px;
+    overflow-y:auto;
+}
+
+#sidebar a{
+    display:block;
+    color:#38bdf8;
+    margin-bottom:10px;
+    text-decoration:none;
+    cursor:pointer;
+}
+
+#main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+}
+
+#header{
+    padding:15px;
+    border-bottom:1px solid #1e293b;
+    display:flex;
+    justify-content:space-between;
+    flex-shrink:0;
+}
+
+#status{
+    padding:5px;
+    font-size:12px;
+    color:#38bdf8;
+    flex-shrink:0;
+}
+
+#chat{
+    flex:1;
+    overflow-y:auto;
+    padding:20px;
+    min-height:0;
+}
+
+.message{
+    display:flex;
+    margin-bottom:15px;
+}
+
+.user{
+    justify-content:flex-end;
+}
+
+.bot{
+    justify-content:flex-start;
+}
+
+.bubble{
+    padding:12px;
+    border-radius:12px;
+    max-width:65%;
+    word-wrap:break-word;
+}
+
+.user .bubble{
+    background:#2563eb;
+}
+
+.bot .bubble{
+    background:#1e293b;
+}
+
+#voice-status{
+    font-size:12px;
+    color:#38bdf8;
+    padding:5px;
+    flex-shrink:0;
+}
+
+#input-area{
+    display:flex;
+    gap:10px;
+    padding:10px;
+    border-top:1px solid #1e293b;
+    flex-wrap:wrap;
+    background:#0f172a;
+    flex-shrink:0;
+}
+
+input{
+    flex:1;
+    min-width:200px;
+    padding:12px;
+    border-radius:8px;
+    border:none;
+    background:#1e293b;
+    color:white;
+    outline:none;
+}
+
+button{
+    padding:12px;
+    border:none;
+    border-radius:8px;
+    background:#2563eb;
+    color:white;
+    cursor:pointer;
+}
+
+button:hover{
+    opacity:0.9;
+}
+
+/* MOBILE */
+@media(max-width:768px){
+
+    body{
+        flex-direction:column;
+    }
+
+    #sidebar{
+        width:100%;
+        height:auto;
+        border-right:none;
+        border-bottom:1px solid #1e293b;
+    }
+
+    .bubble{
+        max-width:90%;
+    }
+
+    #input-area{
+        flex-direction:column;
+    }
+
+    button{
+        width:100%;
+    }
+}
+
 </style>
 </head>
 
@@ -212,10 +353,17 @@ function sendMessage() {
             chat.scrollTop = chat.scrollHeight;
         };
 
-        currentStream.onerror = function() {
+        currentStream.onerror = function(event) {
+
             console.log("Stream ended");
-            currentStream.close();
-            speak(fullText);
+
+            if(currentStream){
+                currentStream.close();
+            }
+
+            if(fullText){
+                speak(fullText);
+            }
         };
 
     } catch (err) {
