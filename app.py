@@ -45,9 +45,11 @@ def init_db():
     )
     """)
 
-    # MESSAGES
+    # FORCE RECREATE MESSAGES TABLE
+    c.execute("DROP TABLE IF EXISTS messages")
+
     c.execute("""
-    CREATE TABLE IF NOT EXISTS messages (
+    CREATE TABLE messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id INTEGER,
         role TEXT,
@@ -567,7 +569,6 @@ def new_chat():
 def stop():
     active_streams[current_user.id]=False
     return "stopped"
-
 
 # ======================
 # RUN
